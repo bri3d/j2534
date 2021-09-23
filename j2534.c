@@ -13,10 +13,9 @@
 #include <stdlib.h>
 #include <libusb.h>
 #include <string.h>
-#include "byteswap.h"
 #include "j2534.h"
 
-const char* DllVersion = "2.0.3";
+const char* DllVersion = "2.0.1";
 const char* ApiVersion = "04.04";
 const int VENDOR_ID = 0x0403;
 const int PRODUCT_ID = 0xCC4D;
@@ -52,7 +51,7 @@ void writelog(int8_t* str)
 	fprintf(logfile, "%s", str);
 }
 
-void writelogx(int8_t* str, long unique)
+void writelogx(int8_t* str, int32_t unique)
 {
 	if (!write_log) return;
 	fprintf(logfile, "[%08X]%s", (int) unique, str);
@@ -82,7 +81,7 @@ void writeloghexshort(int8_t num)
 	fprintf(logfile, "%08X", (uint32_t) num);
 }
 
-void writeloghexx(int8_t num, long unique)
+void writeloghexx(int8_t num, int32_t unique)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%02X[%08X]", (uint8_t) num, (int) unique);
@@ -130,13 +129,13 @@ uint64_t parse_ts(const void* data)
 {
 	/*
 	 *  This parse_ts function parses four bytes from the given data array
-	 *  and copies them to a long, then swaps them based on the processor
+	 *  and copies them to a int32_t, then swaps them based on the processor
 	 *  endian.
 	 */
 	uint64_t timestamp = 0;
 	memcpy(&timestamp, data, 4);
 	if (littleEndian)
-		timestamp = bswap_32(timestamp);
+		timestamp = __builtin_bswap32(timestamp);
 	return timestamp;
 }
 
@@ -233,7 +232,7 @@ int get_endpoints(libusb_device** devs, int cnt, const int vendor_id,
 	return 0;
 }
 
-long PassThruOpen(const void* pName, unsigned long* pDeviceID)
+int32_t PassThruOpen(const void* pName, uint32_t* pDeviceID)
 {
 	/*
 	 *  Establish a connection with a Pass-Thru device.
@@ -294,6 +293,7 @@ long PassThruOpen(const void* pName, unsigned long* pDeviceID)
 	r = get_endpoints(devs, cnt, VENDOR_ID, PRODUCT_ID, endpoint);
 	libusb_free_device_list(devs, 1);
 
+	libusb_set_debug(con->ctx, 3);
 	con->dev_handle = libusb_open_device_with_vid_pid(con->ctx, VENDOR_ID,
 			PRODUCT_ID);
 	if (con->dev_handle == NULL )
@@ -400,7 +400,7 @@ long PassThruOpen(const void* pName, unsigned long* pDeviceID)
 	return 0;
 }
 
-long PassThruClose(unsigned long DeviceID)
+int32_t PassThruClose(uint32_t DeviceID)
 {
 	/*
 	 *  Terminate a connection with a Pass-Thru device.
@@ -434,8 +434,8 @@ long PassThruClose(unsigned long DeviceID)
 	return 0;
 }
 
-long PassThruConnect(unsigned long DeviceID, unsigned long protocolID,
-		unsigned long flags, unsigned long baud, unsigned long* pChannelID)
+int32_t PassThruConnect(uint32_t DeviceID, uint32_t protocolID,
+		uint32_t flags, uint32_t baud, uint32_t* pChannelID)
 {
 	/*
 	 *  Establish a connection with a protocol channel.
@@ -467,7 +467,7 @@ long PassThruConnect(unsigned long DeviceID, unsigned long protocolID,
 	return 0;
 }
 
-long PassThruDisconnect(unsigned long channelID)
+int32_t PassThruDisconnect(uint32_t channelID)
 {
 	/*
 	 *  Terminate a connection with a protocol channel.
@@ -490,8 +490,8 @@ long PassThruDisconnect(unsigned long channelID)
 	return 0;
 }
 
-long PassThruWriteMsgs(unsigned long ChannelID, const PASSTHRU_MSG* pMsg,
-		unsigned long* pNumMsgs, unsigned long timeInterval)
+int32_t PassThruWriteMsgs(uint32_t ChannelID, const PASSTHRU_MSG* pMsg,
+		uint32_t* pNumMsgs, uint32_t timeInterval)
 {
 	/*
 	 *  Write message(s) to a protocol channel.
@@ -534,8 +534,8 @@ long PassThruWriteMsgs(unsigned long ChannelID, const PASSTHRU_MSG* pMsg,
 	return r;
 }
 
-long PassThruStartPeriodicMsg(unsigned long ChannelID, const PASSTHRU_MSG* pMsg,
-		unsigned long* pMsgID, unsigned long timeInterval)
+int32_t PassThruStartPeriodicMsg(uint32_t ChannelID, const PASSTHRU_MSG* pMsg,
+		uint32_t* pMsgID, uint32_t timeInterval)
 {
 	/*
 	 *  Start sending a message at a specified time interval on a protocol channel.
@@ -544,7 +544,7 @@ long PassThruStartPeriodicMsg(unsigned long ChannelID, const PASSTHRU_MSG* pMsg,
 	return 0;
 }
 
-long PassThruStopPeriodicMsg(unsigned long ChannelID, unsigned long msgID)
+int32_t PassThruStopPeriodicMsg(uint32_t ChannelID, uint32_t msgID)
 {
 	/*
 	 *  Stop a periodic message.
@@ -553,8 +553,8 @@ long PassThruStopPeriodicMsg(unsigned long ChannelID, unsigned long msgID)
 	return 0;
 }
 
-long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
-		unsigned long* pNumMsgs, unsigned long Timeout)
+int32_t PassThruReadMsgs(uint32_t ChannelID, PASSTHRU_MSG* pMsg,
+		uint32_t* pNumMsgs, uint32_t Timeout)
 {
 	/*
 	 *  Read message(s) from a protocol channel.
@@ -621,6 +621,8 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 						uint8_t channel_id = data[bytes_processed + 2];
 						uint8_t packet_type = data[bytes_processed + 4];
 						int8_t* msg_type;
+						snprintf(log_msg, 128, "\t\tpacket_type = %02x\n", packet_type);
+						writelog(log_msg);
 						switch (packet_type)
 						{
 						case (uint8_t) 0xA0:	// Start of a TX LB msg
@@ -638,7 +640,7 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 								msgBuf[rcvBufIndex].ExtraDataIndex = dataSize;
 								msgBuf[rcvBufIndex].RxStatus = 9;	// TX Done Loopback
 							}
-							if (channel_id == 0x33 || channel_id == 0x34)	// K-line message
+							if (channel_id == 0x33)	// K-line message
 							{
 								msgBuf[rcvBufIndex].DataSize = 0;
 								msgBuf[rcvBufIndex].ExtraDataIndex = 0;
@@ -676,7 +678,7 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 								msgBuf[rcvBufIndex].DataSize = dataSize;
 								msgBuf[rcvBufIndex].ExtraDataIndex = dataSize;
 							}
-							if (channel_id == 0x33 || channel_id == 0x34)	// K-line message
+							if (channel_id == 0x33)	// K-line message
 							{
 								datacopy(&msgBuf[rcvBufIndex], data, 0, pos, (data[len] - 1));
 								dataSize = msgBuf[rcvBufIndex].DataSize + (data[len] - 1);
@@ -696,6 +698,9 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 							break;
 						case (uint8_t) 0x40:	// Msg end indication
 							msg_type = "RX Msg";
+							goto SKIP_60;
+						case (uint8_t) 0x44:	// Ext Msg end indication
+							msg_type = "Ext RX Msg";
 							goto SKIP_60;
 						case (uint8_t) 0x60:	// LB msg end indication
 							msg_type = "LB Msg";
@@ -804,9 +809,9 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 	return 0;
 }
 
-long PassThruStartMsgFilter(unsigned long ChannelID, unsigned long FilterType,
+int32_t PassThruStartMsgFilter(uint32_t ChannelID, uint32_t FilterType,
 		const PASSTHRU_MSG* pMaskMsg, const PASSTHRU_MSG* pPatternMsg,
-		const PASSTHRU_MSG* pFlowControlMsg, unsigned long* pMsgID)
+		const PASSTHRU_MSG* pFlowControlMsg, uint32_t* pMsgID)
 {
 	/*
 	 *  Start filtering incoming messages on a protocol channel.
@@ -879,7 +884,7 @@ long PassThruStartMsgFilter(unsigned long ChannelID, unsigned long FilterType,
 	return 0;
 }
 
-long PassThruStopMsgFilter(unsigned long ChannelID, unsigned long msgID)
+int32_t PassThruStopMsgFilter(uint32_t ChannelID, uint32_t msgID)
 {
 	/*
 	 *  Stops filtering incoming messages on a protocol channel.
@@ -904,8 +909,8 @@ long PassThruStopMsgFilter(unsigned long ChannelID, unsigned long msgID)
 	return 0;
 }
 
-long PassThruSetProgrammingVoltage(unsigned long DeviceID,
-		unsigned long pinNumber, unsigned long voltage)
+int32_t PassThruSetProgrammingVoltage(uint32_t DeviceID,
+		uint32_t pinNumber, uint32_t voltage)
 {
 	/*
 	 *  Set a programming voltage on a specific pin.
@@ -914,7 +919,7 @@ long PassThruSetProgrammingVoltage(unsigned long DeviceID,
 	return 0;
 }
 
-long PassThruReadVersion(unsigned long DeviceID, char* pFirmwareVersion,
+int32_t PassThruReadVersion(uint32_t DeviceID, char* pFirmwareVersion,
 		char* pDllVersion, char* pApiVersion)
 {
 	/*
@@ -934,7 +939,7 @@ long PassThruReadVersion(unsigned long DeviceID, char* pFirmwareVersion,
 	return 0;
 }
 
-long PassThruGetLastError(char* pErrorDescription)
+int32_t PassThruGetLastError(char* pErrorDescription)
 {
 	/*
 	 *  Gets the text description of the last error.
@@ -953,7 +958,7 @@ long PassThruGetLastError(char* pErrorDescription)
 	return 0;
 }
 
-long PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID,
+int32_t PassThruIoctl(uint32_t ChannelID, uint32_t ioctlID,
 		const void* pInput, void* pOutput)
 {
 	/*
@@ -967,7 +972,6 @@ long PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID,
 	writeloghex(ioctlID);
 	int8_t* data = malloc(sizeof(int8_t) * 80);
 	int bytes_written, bytes_read, r, i;
-	r = 1;
 	if (ioctlID == 1)
 	{
 		const SCONFIG_LIST* inputlist = pInput;
@@ -1021,14 +1025,14 @@ long PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID,
 			r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_out,
 					data, strlen(data), &bytes_written, 0);
 			r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_in,
-					data, 80, &bytes_read, 500);
+					data, 80, &bytes_read, 0);
 		}
 	}
 	if (ioctlID == 3)
 	{
 		writelog(" [READ_VBATT]\n");
-		long* vBatt = pOutput;
-		long pin = 16;
+		int32_t* vBatt = pOutput;
+		int32_t pin = 16;
 		snprintf(data, 80, "atr %d\r\n\0", (int) pin);
 		r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_out,
 				data, strlen(data), &bytes_written, 0);
@@ -1047,54 +1051,18 @@ long PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID,
 		writelognumber((int)*vBatt);
 		writelog("mV\n");
 	}
-	if (ioctlID == 5)
-	{
-		const PASSTHRU_MSG* pMsg = pInput;
-		writelog(" [FAST INIT]\n");
-		writelogpassthrumsg(pMsg);
-		snprintf(data, 80, "aty%d %d 0\r\n\0", (int) ChannelID,
-				(int) pMsg->DataSize);
-		for (i = 0; i < (int) pMsg->DataSize; ++i)
-		{
-			data[10 + i] = pMsg->Data[i];
-		}
-		r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_out,
-				data, strlen(data), &bytes_written, 0);
-		if (r < 0)
-			goto EXIT_IOCTL;
-		r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_in,
-				data, 80, &bytes_read, 500);
-		if (r < 0)
-			goto EXIT_IOCTL;
-		uint64_t len = (uint64_t) atol(data + 5);
-		r = libusb_bulk_transfer(con->dev_handle, endpoint->addr_in,
-				data, 80, &bytes_read, 500);
-		if (r < 0)
-			goto EXIT_IOCTL;
-		PASSTHRU_MSG* pOutMsg = pOutput;
-		pOutMsg->DataSize = 0;
-		datacopy(pOutMsg, data,	0, 0, len);
-		pOutMsg->DataSize = len;
-		pOutMsg->ExtraDataIndex = len;
-		pOutMsg->RxStatus = 0;
-		pOutMsg->ProtocolID = ChannelID;
-		writelogpassthrumsg(pOutMsg);
-	}
 	if (ioctlID == 7)
 	{
 		writelog(" [CLEAR_TX_BUFFER]\n");
-		r = 0;
 	}
 	if (ioctlID == 8)
 	{
 		memset(&msgBuf, 0, sizeof(msgBuf));
 		uint32_t rcvBufIndex = 0;
 		writelog(" [CLEAR_RX_BUFFER]\n");
-		r = 0;
 	}
-	EXIT_IOCTL:
 	free(data);
 	data = NULL;
 	writelog("EndIoctl\n");
-	return r;
+	return 0;
 }
