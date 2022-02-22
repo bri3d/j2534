@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <libusb.h>
 #include <string.h>
-#include <byteswap.h>
 #include "j2534.h"
 
 const char* DllVersion = "2.0.1";
@@ -50,42 +49,49 @@ void writelog(int8_t* str)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%s", str);
+	fflush(logfile);
 }
 
 void writelogx(int8_t* str, long unique)
 {
 	if (!write_log) return;
 	fprintf(logfile, "[%08X]%s", (int) unique, str);
+	fflush(logfile);
 }
 
 void writelognumber(int num)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%d", num);
+	fflush(logfile);
 }
 
 void writelogstring(int8_t* str)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%s", str);
+	fflush(logfile);
 }
 
 void writeloghex(int8_t num)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%02X ", (uint8_t) num);
+	fflush(logfile);
 }
 
 void writeloghexshort(int8_t num)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%08X", (uint32_t) num);
+	fflush(logfile);
 }
 
 void writeloghexx(int8_t num, long unique)
 {
 	if (!write_log) return;
 	fprintf(logfile, "%02X[%08X]", (uint8_t) num, (int) unique);
+	fflush(logfile);
 }
 
 void writelogpassthrumsg(const PASSTHRU_MSG* msg)
@@ -103,6 +109,7 @@ void writelogpassthrumsg(const PASSTHRU_MSG* msg)
 	for (i = 0; i < msg->DataSize; i++)
 		fprintf(logfile, "%02X ", (uint8_t) msg->Data[i]);
 	fprintf(logfile, "\n");
+	fflush(logfile);
 }
 
 int isLittleEndian()
@@ -136,7 +143,7 @@ uint64_t parse_ts(const void* data)
 	uint64_t timestamp = 0;
 	memcpy(&timestamp, data, 4);
 	if (littleEndian)
-		timestamp = bswap_32(timestamp);
+		timestamp = __builtin_bswap32(timestamp);
 	return timestamp;
 }
 
@@ -583,7 +590,7 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 		int8_t* channel = malloc(sizeof(int8_t) * 4);
 		snprintf(channel, 4, "%d", (int) ChannelID);
 
-		int dontexit = 10;
+		int dontexit = 1;
 
 		if (rcvBufIndex < 8)
 			msgBuf[rcvBufIndex].DataSize = 0;	// Initialize msg datasize
@@ -622,6 +629,8 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 						uint8_t channel_id = data[bytes_processed + 2];
 						uint8_t packet_type = data[bytes_processed + 4];
 						int8_t* msg_type;
+						snprintf(log_msg, 128, "\t\tpacket_type = %02x channel_id = %02x\n", packet_type, channel_id);
+						writelog(log_msg);
 						switch (packet_type)
 						{
 						case (uint8_t) 0xA0:	// Start of a TX LB msg
@@ -697,6 +706,9 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
 							break;
 						case (uint8_t) 0x40:	// Msg end indication
 							msg_type = "RX Msg";
+							goto SKIP_60;
+						case (uint8_t) 0x44:	// Ext Msg end indication
+							msg_type = "Ext RX Msg";
 							goto SKIP_60;
 						case (uint8_t) 0x60:	// LB msg end indication
 							msg_type = "LB Msg";
