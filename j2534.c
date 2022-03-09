@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <libusb.h>
 #include <string.h>
+#include "byteswap.h"
 #include "j2534.h"
 
 const char* DllVersion = "2.0.3";
@@ -101,7 +102,6 @@ void writelogpassthrumsg(const PASSTHRU_MSG* msg)
   fprintf(logfile, "\t\tData:\n\t\t\t");
   for (i = 0; i < msg->DataSize; i++)
     fprintf(logfile, "%02X ", (uint8_t) msg->Data[i]);
-  fprintf(logfile, "\n");
   fflush(logfile);
 }
 
@@ -621,8 +621,6 @@ long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG* pMsg,
             uint8_t channel_id = data[bytes_processed + 2];
             uint8_t packet_type = data[bytes_processed + 4];
             int8_t* msg_type;
-            snprintf(log_msg, 128, "\t\tpacket_type = %02x channel_id = %02x\n", packet_type, channel_id);
-            writelog(log_msg);
             switch (packet_type)
             {
             case (uint8_t) 0xA0:  // Start of a TX LB msg
@@ -1097,6 +1095,7 @@ long PassThruIoctl(unsigned long ChannelID, unsigned long ioctlID,
     writelog(" [CLEAR_RX_BUFFER]\n");
     r = 0;
   }
+EXIT_IOCTL:
   free(data);
   data = NULL;
   writelog("EndIoctl\n");
