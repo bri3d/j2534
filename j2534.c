@@ -102,6 +102,7 @@ void writelogpassthrumsg(const PASSTHRU_MSG* msg)
   fprintf(logfile, "\t\tData:\n\t\t\t");
   for (i = 0; i < msg->DataSize; i++)
     fprintf(logfile, "%02X ", (uint8_t) msg->Data[i]);
+  fprintf(logfile, "\n");
 }
 
 int isLittleEndian()
